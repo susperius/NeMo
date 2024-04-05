@@ -19,12 +19,13 @@ import shutil
 import tarfile
 import tempfile
 import uuid
-from typing import Optional, Set, Union
+from typing import Optional, Set, Union, Dict
 
 import torch
 from omegaconf import DictConfig, OmegaConf
 from omegaconf.omegaconf import open_dict
 from pytorch_lightning.trainer.trainer import Trainer
+import safetensors.torch as sf_torch
 
 from nemo.core import classes as nemo_classes  # to avoid circular import do not import ModelPT directly
 from nemo.utils import logging, model_utils
@@ -577,11 +578,20 @@ class SaveRestoreConnector:
         return out_folder
 
     @staticmethod
-    def _save_state_dict_to_disk(state_dict, filepath):
+    def _save_state_dict_to_disk(state_dict: Dict[str, torch.Tensor], filepath: str):
+        try:
+            sf_torch.save_file(state_dict, filepath)
+            return
+        except Exception as e:
+            logging.warning(f'failed to store model weights as safetensors: {e}')
         torch.save(state_dict, filepath)
 
     @staticmethod
-    def _load_state_dict_from_disk(model_weights, map_location='cpu'):
+    def _load_state_dict_from_disk(model_weights: str, map_location='cpu') -> Dict[str, torch.Tensor]:
+        try:
+            return sf_torch.load_file(model_weights, device=map_location)
+        except Exception as e:
+            logging.warning(f'failed to use safetenors to restore model weights: {e}')
         return torch.load(model_weights, map_location=map_location)
 
     @property
